@@ -1,14 +1,14 @@
-# cogs/infractions.py
 import discord
 from discord.ext import commands
 from discord import app_commands
-import json, os, uuid
+import json, os, uuid, requests
 from datetime import datetime
+import asyncio
 
 INFRACTION_FILE = "data/infractions.json"
 STAFF_ROLE_ID = int(os.getenv("IA"))
 LOG_CHANNEL_ID = int(os.getenv("INFRACTION_LOG_CHANNEL"))
-
+ERLC_API_KEY = os.getenv("ERLC_KEY")
 
 # Load or create the infractions file
 def load_infractions():
@@ -29,7 +29,6 @@ class Infractions(commands.Cog):
     @commands.hybrid_command(name="infract", description="Issue an infraction to a user.")
     @app_commands.describe(member="User to infract", action="Type of infraction", reason="Reason for the infraction")
     async def infract(self, ctx, member: discord.Member, action: str, *, reason: str):
-        # Check if the user has the required role
         if not any(role.id == STAFF_ROLE_ID for role in ctx.author.roles):
             return await ctx.reply("You do not have permission to use this command.", ephemeral=True)
 
@@ -44,6 +43,7 @@ class Infractions(commands.Cog):
             "handler": f"{ctx.author.name} ({ctx.author.id})"
         }
 
+        # Save infraction
         infractions = load_infractions()
         infractions[infraction_id] = entry
         save_infractions(infractions)
@@ -63,6 +63,8 @@ class Infractions(commands.Cog):
             await ctx.send("User could not be DMed.", ephemeral=True)
 
         await ctx.send(f"Infraction issued to {member.mention} with ID `{infraction_id}` ✅", ephemeral=True)
+
+        # Log to channel
         log_channel = self.bot.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             embed_log = discord.Embed(
@@ -71,8 +73,63 @@ class Infractions(commands.Cog):
                 color=discord.Color.from_rgb(240, 167, 15)
             )
             embed_log.set_footer(text=f"Signed by: {ctx.author} | Infraction ID: {infraction_id}", icon_url=ctx.author.display_avatar.url)
+            await log_channel.send(content=f"{member.mention}", embed=embed_log)
 
-            await log_channel.send(content=f"{member.mention}" ,embed=embed_log)
+        # 🚨 ERLC remote unmod & unadmin if applicable
+        if action.lower() in ["suspension", "termination", "blacklist, UI, Under Investigation"]:
+            roblox_username = member.display_name  # assumes nickname is Roblox username
+            roblox_id = await self.get_roblox_id(roblox_username)
+
+            if roblox_id:
+                try:
+                    commands_to_send = [f":unmod {roblox_id}", f":unadmin {roblox_id}"]
+                    for cmd in commands_to_send:
+                        res = requests.post(
+                            "https://api.policeroleplay.community/v1/server/command",
+                            headers={
+                                "server-key": ERLC_API_KEY,
+                                "Content-Type": "application/json"
+                            },
+                            data=json.dumps({
+                                "command": cmd
+                            })
+                        )
+
+                        if res.status_code == 200:
+                            await ctx.send(f"✅ ERLC command `{cmd}` sent successfully.")
+                        else:
+                            await ctx.send(f"❌ Failed to send ERLC command `{cmd}`. ({res.status_code})")
+
+                        # Wait 3 seconds before sending the next command
+                        await asyncio.sleep(10  )
+
+                except Exception as e:
+                    await ctx.send(f"❌ Error while sending ERLC commands: {e}")
+
+            else:
+                await ctx.send(f"❌ Could not find Roblox ID for `{roblox_username}`")
+
+    # ✅ Properly defined as an async method
+    async def get_roblox_id(self, username):
+        url = "https://users.roblox.com/v1/usernames/users"
+        payload = {
+            "usernames": [username],
+            "excludeBannedUsers": True
+        }
+        headers = {
+            "Content-Type": "application/json"
+        }
+
+        try:
+            response = requests.post(url, headers=headers, json=payload)
+            data = response.json()
+            if "data" in data and data["data"]:
+                return data["data"][0]["id"]
+            else:
+                return None
+        except Exception as e:
+            print(f"Error fetching Roblox ID: {e}")
+            return None
 
     @commands.hybrid_command(name="lookup", description="Lookup an infraction by ID.")
     @app_commands.describe(code="The infraction ID to lookup")
