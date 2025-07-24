@@ -67,11 +67,12 @@ class Erlc(commands.Cog):
                 description_lines.append(f"{player_display} ({team})")
 
             embed = discord.Embed(
-                title="ERLC | Current Players",
+                title="Texas State Roleplay | Current Players",
                 description="\n".join(description_lines),
                 color=discord.Color.blue()
             )
-            embed.set_footer(text="Click player names to visit their Roblox profile.")
+            embed.set_footer(text=f"{len(data)}/40 Players")
+            embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/1397422094723190926/1397640756709298246/image.png?ex=688275e3&is=68812463&hm=98537d3d50d5222ba33d9c61972f3e3cc9212f9e9f4d19c527a9d5448c98bf19&")
             await ctx.send(embed=embed)
 
         except requests.RequestException as e:
