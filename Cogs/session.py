@@ -6,15 +6,33 @@ import os
 from dotenv import load_dotenv
 from discord import ui, ButtonStyle
 
+import json
+
+SESSION_FILE = "data/session_status.json"
+
+def load_session_status():
+    if not os.path.exists(SESSION_FILE):
+        default = {
+            "status": "Offline",
+            "timestamp": int(datetime.now().timestamp()),
+            "vote_started_by": None
+        }
+        save_session_status(default)
+        return default
+    with open(SESSION_FILE, "r") as f:
+        return json.load(f)
+
+def save_session_status(data):
+    with open(SESSION_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
 load_dotenv()
 REQUIRED_ROLE_ID = int(os.getenv("REQUIRED_ROLE_ID"))
 VOTE_LOG_CHANNEL_ID = int(os.getenv("VOTE_LOG_CHANNEL_ID"))
 roles_to_ping = list(map(int, os.getenv("ROLE_TO_PING", "").split(",")))
 
-SESSION_STATUS = {
-    "status": "Offline",
-    "timestamp": int(datetime.now().timestamp()),
-}
+SESSION_STATUS = load_session_status()
+
 
 IMAGE_URLS = {
     "SSU": "https://cdn.discordapp.com/attachments/1354836588332580904/1397629793654276197/image.png?ex=68826bad&is=68811a2d&hm=8998bd9d5422afca165b58ab0133ce8c9db9ca8d9dacf4d0acb3b937d9fc93e0&",
@@ -52,7 +70,11 @@ class VoteView(discord.ui.View):
         )
         embed.set_image(url=IMAGE_URLS["Vote"])
         embed.add_field(name="Vote Information", value=f">>> **Votes:** {vote_count}/10\n **Voters:** {voters_list}", inline=False)
-        embed.add_field(name="Additional Information", value=f">>> **Started At:** <t:{now}:F>\n **Started By:** {SESSION_STATUS['vote_started_by'].mention}", inline=False)
+        voter_id = SESSION_STATUS.get("vote_started_by")
+        voter = self.message.guild.get_member(voter_id) if voter_id else None
+        embed.add_field(name="Additional Information",
+                        value=f">>> **Started At:** <t:{now}:F>\n **Started By:** {voter.mention if voter else 'Unknown'}",
+                        inline=False)
         return embed
 
     @discord.ui.button(label="\u2705 Vote", style=discord.ButtonStyle.success, custom_id="vote_button")
@@ -131,7 +153,8 @@ class SessionDropdown(discord.ui.Select):
         elif choice == "Vote" and SESSION_STATUS["status"] == "Offline":
             SESSION_STATUS["status"] = "Voting"
             SESSION_STATUS["timestamp"] = now
-            SESSION_STATUS["vote_started_by"] = interaction.user
+            SESSION_STATUS["vote_started_by"] = interaction.user.id
+            save_session_status(SESSION_STATUS)
             dummy_embed = discord.Embed(
                 title="Loading...",
                 description="Creating vote panel...",
