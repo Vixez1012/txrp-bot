@@ -27,7 +27,7 @@ class Erlc(commands.Cog):
     @commands.hybrid_group(name="erlc", with_app_command=True)
     async def erlc(self, ctx):
         if ctx.invoked_subcommand is None:
-            await ctx.send("Please specify a subcommand, e.g. players or serverinfo.")
+            await ctx.send("Please specify a subcommand.")
 
     # Subcommand: /erlc players
     @erlc.command(name="players", help="Show current ERLC players")
