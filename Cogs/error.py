@@ -8,7 +8,7 @@ import uuid
 load_dotenv()
 SENTRY_DSN = os.getenv("SENTRY_DSN")
 sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=1.0)
-
+DEVELOPER = int(os.getenv("DEVELOPER"))
 error_dict = {}
 
 class Error(commands.Cog):
@@ -20,6 +20,9 @@ class Error(commands.Cog):
         # ✅ Ignore CommandNotFound errors
         if isinstance(error, commands.CommandNotFound):
             return
+
+        error_code = str(uuid.uuid4())[:8]  # short unique error code
+        error_dict[error_code] = str(error)
 
         # Log to Sentry
         with sentry_sdk.push_scope() as scope:
@@ -35,10 +38,15 @@ class Error(commands.Cog):
             color=discord.Color.orange()
         )
         embed.add_field(name="Error Code:", value=f"```{error_code}```", inline=False)
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, ephemeral=True)
 
     @commands.command()
     async def error(self, ctx, code: str):
+
+        if DEVELOPER not in [role.id for role in ctx.author.roles]:
+            await ctx.send("You don't have permission to use this command.", ephemeral=True)
+            return
+
         if code in error_dict:
             embed = discord.Embed(
                 title=f"Error {code}",
