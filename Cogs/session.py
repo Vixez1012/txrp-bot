@@ -9,7 +9,7 @@ from discord import ui, ButtonStyle
 load_dotenv()
 REQUIRED_ROLE_ID = int(os.getenv("REQUIRED_ROLE_ID"))
 VOTE_LOG_CHANNEL_ID = int(os.getenv("VOTE_LOG_CHANNEL_ID"))
-ROLE_TO_PING = int(os.getenv("ROLE_TO_PING"))
+roles_to_ping = list(map(int, os.getenv("ROLE_TO_PING", "").split(",")))
 
 SESSION_STATUS = {
     "status": "Offline",
@@ -154,7 +154,9 @@ class SessionDropdown(discord.ui.Select):
             return
 
         await interaction.response.edit_message(content=f"{choice} has been selected.", embed=None, view=None)
-        await channel.send(content=f"<@&{ROLE_TO_PING}>", embed=embed)
+        ping_str = " ".join(f"<@&{role_id}>" for role_id in roles_to_ping)
+        await channel.send(content=ping_str, embed=embed)
+
 
 class SessionView(discord.ui.View):
     def __init__(self):
