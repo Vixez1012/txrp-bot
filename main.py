@@ -57,7 +57,9 @@ class MyBot(commands.Bot):
             "cogs.say",
             "cogs.infractions",
             "cogs.music",
-            "cogs.tts"
+            "cogs.tts",
+            "cogs.snipe",
+            "cogs.ping"
         ]
 
         for cog in cogs:
