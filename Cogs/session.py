@@ -106,6 +106,8 @@ class SessionDropdown(discord.ui.Select):
         if choice == "SSU" and SESSION_STATUS["status"] in ("Offline", "Voting"):
             SESSION_STATUS["status"] = "Online"
             SESSION_STATUS["timestamp"] = now
+            SESSION_STATUS["vote_started_by"] = None
+            save_session_status(SESSION_STATUS)
 
             embed = discord.Embed(
                 title="TexR | Session Startup",
@@ -114,9 +116,12 @@ class SessionDropdown(discord.ui.Select):
             )
             embed.set_image(url=IMAGE_URLS["SSU"])
 
+
         elif choice == "SSD" and SESSION_STATUS["status"] == "Online":
             SESSION_STATUS["status"] = "Offline"
             SESSION_STATUS["timestamp"] = now
+            SESSION_STATUS["vote_started_by"] = None
+            save_session_status(SESSION_STATUS)
             embed = discord.Embed(
                 title="TexR | Server Shutdown",
                 description="Unfortunately our session has come to an end. If you attended we hope you enjoyed yourself!",
