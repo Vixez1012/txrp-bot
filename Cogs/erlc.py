@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 from datetime import datetime
 import os
 import requests
@@ -8,6 +9,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 API_KEY = os.getenv("ERLC_KEY")
+MANAGEMENT_ROLE_ID = int(os.getenv("MANAGEMENT"))
 
 class Erlc(commands.Cog):
     def __init__(self, bot):
@@ -130,6 +132,47 @@ class Erlc(commands.Cog):
 
         except requests.RequestException as e:
             await ctx.send(f"Error fetching server info: {e}")
+
+    @erlc.command(name="command", description="Send a command to the ERLC server.")
+    @app_commands.describe(command="The ERLC command to send.")
+    async def erlc_command(self, ctx: commands.Context, command: str):
+        # Check if user has the Management role
+        if not any(role.id == MANAGEMENT_ROLE_ID for role in ctx.author.roles):
+            await ctx.reply("You do not have permission to use this command.", ephemeral=True)
+            return
+
+        # Try deferring if it's a slash command
+        if ctx.interaction:
+            await ctx.interaction.response.defer(thinking=True, ephemeral=True)
+
+        try:
+            response = requests.post(
+                "https://api.policeroleplay.community/v1/server/command",
+                headers={
+                    "server-key": API_KEY,
+                    "Content-Type": "application/json"
+                },
+                json={"command": f":{command}"}
+            )
+            data = response.json()
+
+            msg = ""
+            if response.status_code == 200:
+                msg = f"Command sent: `{command}`\n**Response:** `{data.get('message', 'No message returned')}`"
+            else:
+                msg = f"❌ Failed to send command. Status: {response.status_code}"
+
+            if ctx.interaction:
+                await ctx.interaction.followup.send(msg)
+            else:
+                await ctx.send(msg)
+
+        except Exception as e:
+            if ctx.interaction:
+                await ctx.interaction.followup.send(f"⚠️ Error while sending request: `{str(e)}`")
+            else:
+                await ctx.send(f"⚠️ Error while sending request: `{str(e)}`")
+
 
 # Required setup function
 async def setup(bot):
