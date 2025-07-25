@@ -53,11 +53,11 @@ class SSULinkView(discord.ui.View):
 
 
 class VoteView(discord.ui.View):
-    def __init__(self, interaction: discord.Interaction, message: discord.Message):
+    def __init__(self, interaction):
         super().__init__(timeout=None)
         self.voters = set()
-        self.message = message
         self.interaction = interaction
+        self.message = None
 
     def get_embed(self):
         now = int(datetime.now().timestamp())
@@ -166,16 +166,31 @@ class SessionDropdown(discord.ui.Select):
                 color=discord.Color.greyple()
             )
 
-            vote_message = await channel.send(embed=dummy_embed)
-            vote_view = VoteView(interaction, vote_message)
+            dummy_message = await channel.send(embed=dummy_embed)
+
+            vote_view = VoteView(interaction)  # no message yet
+
+            # First send the vote panel with a placeholder embed or empty embed
+            vote_panel = await channel.send(
+                content="<@&1309110603419353088> | <@&1337620481645350953>",
+                embed=discord.Embed(title="Loading..."),  # temporary placeholder
+                view=vote_view
+            )
+
+            vote_view.message = vote_panel  # assign the real message now
+
+            # Now generate the proper embed with message available
             embed = vote_view.get_embed()
 
-            await vote_message.channel.send(content=f"<@&{ROLE_TO_PING}>", embed=embed, view=vote_view)
-            await vote_message.delete()
+            # Edit the message to update embed
+            await vote_panel.edit(embed=embed, view=vote_view)
+
+            await dummy_message.delete()
 
             await interaction.response.send_message("Vote started and posted in the vote log channel.", ephemeral=True)
 
             return
+
 
         else:
             await interaction.response.send_message("Invalid action based on current session status.", ephemeral=True)
