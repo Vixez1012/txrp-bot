@@ -10,17 +10,14 @@ ytdl_opts = {
     'default_search': 'ytsearch',
 }
 
-ffmpeg_opts = {
-    'options': '-vn'
-}
-
 ytdl = yt_dlp.YoutubeDL(ytdl_opts)
 
 
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.song_queue = {}  # guild_id: [ (url, title) ]
+        self.song_queue = {}
+        self.volume = {}  # guild_id: volume level (0.0 to 2.0)
 
     async def search_youtube(self, query):
         info = ytdl.extract_info(query, download=False)
@@ -31,7 +28,8 @@ class Music(commands.Cog):
     async def play_next(self, ctx):
         if self.song_queue[ctx.guild.id]:
             url, title = self.song_queue[ctx.guild.id].pop(0)
-            source = await discord.FFmpegOpusAudio.from_probe(url, **ffmpeg_opts)
+            volume = self.volume.get(ctx.guild.id, 1.0)
+            source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(url), volume=volume)
             ctx.voice_client.play(source, after=lambda e: self.bot.loop.create_task(self.play_next(ctx)))
             await ctx.send(f"🎶 Now playing: **{title}**")
         else:
@@ -60,7 +58,8 @@ class Music(commands.Cog):
             self.song_queue[guild_id].append((url, title))
             await ctx.send(f"📥 Added to queue: **{title}**")
         else:
-            source = await discord.FFmpegOpusAudio.from_probe(url, **ffmpeg_opts)
+            volume = self.volume.get(ctx.guild.id, 1.0)
+            source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(url), volume=volume)
             ctx.voice_client.play(source, after=lambda e: self.bot.loop.create_task(self.play_next(ctx)))
             await ctx.send(f"🎧 Now playing: **{title}**")
 
@@ -114,6 +113,18 @@ class Music(commands.Cog):
             await ctx.send("⏹️ Stopped playback and cleared the queue.")
         else:
             await ctx.send("❌ I'm not in a voice channel.")
+
+    @commands.command()
+    async def volume(self, ctx, level: int):
+        """Set playback volume (1–200%)."""
+        if not 1 <= level <= 200:
+            return await ctx.send("❌ Volume must be between 1 and 200.")
+
+        self.volume[ctx.guild.id] = level / 100
+        await ctx.send(f"🔊 Volume set to **{level}%**")
+
+        if ctx.voice_client and ctx.voice_client.is_playing():
+            await ctx.send("ℹ️ New volume will apply on the next song.")
 
 
 async def setup(bot):
