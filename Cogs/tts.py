@@ -1,70 +1,73 @@
 import discord
 from discord.ext import commands
-import pyttsx3
+from gtts import gTTS
 import asyncio
 import os
-
-from discord import FFmpegPCMAudio
 
 class TTS(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.voice_clients = {}
-        self.tts_engine = pyttsx3.init()
-        self.text_queue = asyncio.Queue()
+        self.tts_active = {}  # {guild_id: bool}
+        self.voice_clients = {}  # {guild_id: VoiceClient}
+        self.tts_channels = {}  # {guild_id: text_channel_id}
 
-    @commands.command(name="ttsjoin")
-    async def join_vc(self, ctx):
-        if ctx.author.voice:
-            channel = ctx.author.voice.channel
-            vc = await channel.connect()
-            self.voice_clients[ctx.guild.id] = vc
-            await ctx.send("🔊 Joined the voice channel!")
-            self.bot.loop.create_task(self.process_queue(ctx.guild.id))
-        else:
-            await ctx.send("❌ You must be in a voice channel to use this.")
+    @commands.command(name='ttsjoin')
+    async def tts_join(self, ctx):
+        if ctx.author.voice is None or ctx.author.voice.channel is None:
+            await ctx.send("You must be in a voice channel to start TTS.")
+            return
 
-    @commands.command(name="ttsleave")
-    async def leave_vc(self, ctx):
-        if ctx.voice_client:
-            await ctx.voice_client.disconnect()
-            await ctx.send("👋 Left the voice channel.")
+        voice_channel = ctx.author.voice.channel
+        vc = await voice_channel.connect()
+        self.voice_clients[ctx.guild.id] = vc
+        self.tts_active[ctx.guild.id] = True
+        self.tts_channels[ctx.guild.id] = ctx.channel.id  # Save the text channel here
+        await ctx.send(f"TTS activated in {voice_channel.name}, listening to {ctx.channel.mention}.")
+
+    @commands.command(name='ttsleave')
+    async def tts_leave(self, ctx):
+        guild_id = ctx.guild.id
+        if guild_id in self.voice_clients:
+            vc = self.voice_clients[guild_id]
+            await vc.disconnect()
+            del self.voice_clients[guild_id]
+            self.tts_active[guild_id] = False
+            self.tts_channels.pop(guild_id, None)  # Clear saved channel
+            await ctx.send("TTS deactivated and left the voice channel.")
         else:
-            await ctx.send("❌ I'm not in a voice channel.")
+            await ctx.send("I'm not in a voice channel.")
 
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot:
-            return
+            return  # Ignore bots
 
-        # Optional: Only process messages from a specific text channel
-        # if message.channel.id != YOUR_TEXT_CHANNEL_ID:
-        #     return
+        if not message.guild:
+            return  # Ignore DMs
 
-        guild_id = message.guild.id if message.guild else None
-        if guild_id in self.voice_clients:
-            await self.text_queue.put((guild_id, f"{message.author.display_name} said {message.content}"))
+        guild_id = message.guild.id
 
-    async def process_queue(self, guild_id):
-        while True:
-            guild_id_from_queue, text = await self.text_queue.get()
+        # Only speak messages if TTS is active and in the correct channel
+        if (self.tts_active.get(guild_id)
+            and guild_id in self.voice_clients
+            and self.tts_channels.get(guild_id) == message.channel.id):
 
-            if guild_id_from_queue != guild_id:
-                continue
+            vc = self.voice_clients[guild_id]
+            if not vc.is_playing():
+                try:
+                    tts = gTTS(text=f"{message.author.display_name} says {message.content}")
+                    filename = f"tts_{guild_id}.mp3"
+                    tts.save(filename)
 
-            # Save TTS output to audio file
-            filename = f"tts_{guild_id}.mp3"
-            self.tts_engine.save_to_file(text, filename)
-            self.tts_engine.runAndWait()
+                    vc.play(discord.FFmpegPCMAudio(filename))
+                    while vc.is_playing():
+                        await asyncio.sleep(1)
 
-            vc = self.voice_clients.get(guild_id)
-            if vc and vc.is_connected():
-                vc.play(FFmpegPCMAudio(source=filename))
-                while vc.is_playing():
-                    await asyncio.sleep(5)
-                os.remove(filename)
-            else:
-                break
+                    os.remove(filename)
+                except Exception as e:
+                    print(f"TTS error: {e}")
+
+                    print("🔊 Opus loaded:", discord.opus.is_loaded())
 
 async def setup(bot):
     await bot.add_cog(TTS(bot))
